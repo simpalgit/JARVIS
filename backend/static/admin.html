@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS Admin</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='10' fill='none' stroke='%233ce7ff' stroke-width='2'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #06101c;
+      --panel: rgba(10, 24, 48, 0.86);
+      --line: #1a3a56;
+      --text: #e7f7ff;
+      --muted: #7e9bb3;
+      --cyan: #3ce7ff;
+      --ok: #3ddc97;
+      --danger: #ff6b8a;
+      --amber: #e4b15c;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+      background:
+        radial-gradient(900px 480px at 50% 18%, rgba(60, 231, 255, 0.08), transparent 55%),
+        var(--bg);
+    }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .app { display: flex; height: 100vh; min-height: 640px; }
+    .side {
+      width: 232px;
+      flex: none;
+      padding: 18px 12px;
+      background: #071423;
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow: auto;
+    }
+    .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+    .mark {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--cyan);
+      display: grid; place-items: center;
+      color: var(--cyan); font-weight: 700;
+      box-shadow: 0 0 16px rgba(60, 231, 255, 0.25);
+    }
+    .brand strong { display: block; letter-spacing: 0.16em; font-size: 13px; }
+    .brand span { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
+    .who {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin: 4px 0 10px;
+      padding: 10px;
+      text-align: left;
+      border-radius: 14px;
+      border: 1px solid rgba(90, 180, 230, 0.28);
+      background: linear-gradient(180deg, rgba(16, 42, 74, 0.95), rgba(7, 20, 38, 0.92));
+      color: var(--text);
+    }
+    .who small { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    .who.active { box-shadow: inset 3px 0 0 var(--cyan); }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%; flex: none;
+      display: grid; place-items: center;
+      background: #0c243c; color: var(--cyan); font-weight: 700;
+      border: 1px solid var(--cyan);
+    }
+    .avatar.lg { width: 72px; height: 72px; font-size: 28px; }
+    .profile-card {
+      display: flex; gap: 16px; align-items: center;
+      margin: 8px 0 18px;
+    }
+    .profile-card h1 { margin: 0; letter-spacing: 0.02em; font-size: 32px; color: #f4fcff; }
+    .profile-card p { margin: 4px 0 0; color: var(--cyan); }
+    .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 640px; }
+    .facts div {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(90, 180, 230, 0.28);
+      background: rgba(8, 22, 40, 0.72);
+    }
+    .facts dt { color: var(--muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .facts dd { margin: 6px 0 0; font-size: 16px; }
+    .profile-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .profile-actions a, .profile-actions button {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--text);
+      padding: 8px 12px;
+      text-decoration: none;
+    }
+    #profile-sign-out { color: var(--danger); }
+    .nav {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .nav:hover, .nav:focus { background: rgba(18, 48, 68, 0.7); color: var(--text); }
+    .nav.active {
+      background: #1976d2;
+      color: #fff;
+      box-shadow: none;
+    }
+    .voice {
+      margin-top: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: #0a1c30;
+    }
+    .voice p { margin: 8px 0; color: var(--cyan); }
+    .voice button, .chip, .clear, .save, .send {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: transparent;
+      padding: 8px 12px;
+    }
+    .save, .send { background: var(--cyan); color: #062126; border: 0; font-weight: 600; }
+    .clear { color: var(--danger); }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px 10px; gap: 10px; }
+    .top { display: grid; grid-template-columns: minmax(180px, 280px) 1fr auto; align-items: center; gap: 12px; }
+    .top-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+    .head-who {
+      display: flex; align-items: center; gap: 8px;
+      border: 1px solid rgba(90, 180, 230, 0.35);
+      background: rgba(8, 24, 44, 0.8);
+      border-radius: 999px;
+      padding: 4px 12px 4px 4px;
+      color: var(--text);
+    }
+    .head-who small, .head-who strong { display: block; text-align: left; }
+    .head-who small { color: var(--muted); font-size: 11px; }
+    .nav em {
+      display: inline-grid; place-items: center;
+      min-width: 18px; margin-left: 6px;
+      padding: 0 5px; border-radius: 999px;
+      background: #ff6b8a; color: #1a0610;
+      font-style: normal; font-size: 11px;
+    }
+    .status, .mode-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 8px 12px; background: #0a1c30;
+      font-size: 11px; letter-spacing: 0.12em;
+    }
+    .mode-pill { justify-self: end; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.off { background: var(--danger); box-shadow: none; }
+    .clock { text-align: center; }
+    .clock small { color: var(--muted); letter-spacing: 0.04em; }
+    #clock-time { color: var(--cyan); font-size: 22px; letter-spacing: 0.08em; }
+    .search { width: min(220px, 100%); background: #081321; border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; }
+    .error, .saved { display: none; padding: 8px 12px; border-radius: 10px; }
+    .error { background: rgba(255, 107, 138, 0.12); color: var(--danger); }
+    .saved { background: rgba(61, 220, 151, 0.12); color: var(--ok); }
+    .board {
+      flex: 1; min-height: 0;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr 300px;
+      grid-template-rows: minmax(0, 1.25fr) minmax(0, 0.9fr);
+      gap: 12px;
+      overflow: hidden;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      min-height: 0;
+      overflow: auto;
+    }
+    .core { grid-column: 1 / 3; display: grid; grid-template-columns: 210px 1fr; gap: 8px; }
+    .live { grid-column: 3; grid-row: 1; }
+    .people { grid-column: 1; }
+    .timeline { grid-column: 2; }
+    .commands { grid-column: 3; }
+    .extra { display: none; }
+    .board[data-screen] .panel { display: none; }
+    .board[data-screen="inbox"] #live,
+    .board[data-screen="gmail"] #live,
+    .board[data-screen="whatsapp"] #live,
+    .board[data-screen="alerts"] #live,
+    .board[data-screen="approval"] #live,
+    .board[data-screen="people"] #people-panel,
+    .board[data-screen="brain"] #timeline,
+    .board[data-screen="rules"] #rules,
+    .board[data-screen="reports"] #core,
+    .board[data-screen="devices"] #devices,
+    .board[data-screen="security"] #commands,
+    .board[data-screen="api"] #api-panel,
+    .board[data-screen="channels"] #channels,
+    .board[data-screen="health"] #health,
+    .board[data-screen="profile"] #profile,
+    .board[data-screen="stop"] #commands {
+      display: block;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+    }
+    .board[data-screen="desk"] #timeline,
+    .board[data-screen="brain"] #timeline { display: block; grid-column: 1 / 3; grid-row: 1 / -1; }
+    .board[data-screen="desk"] #commands,
+    .board[data-screen="brain"] #commands { display: block; grid-column: 3; grid-row: 1 / -1; }
+    .tri { display: grid; grid-template-columns: 230px minmax(0, 1fr) 270px; gap: 10px; min-height: 240px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .filters button, .convo-item, .integ button {
+      border: 1px solid var(--line); background: #081628; border-radius: 10px; padding: 8px 10px; color: var(--text);
+    }
+    .filters button.on, .convo-item.active { border-color: var(--cyan); color: var(--cyan); }
+    .convo-item { display: block; width: 100%; text-align: left; margin-bottom: 8px; }
+    .convo-item b, .convo-item span { display: block; }
+    .convo-item span { color: var(--muted); font-size: 12px; }
+    #chat-pane, #reply-pane { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: #081628; }
+    #draft-edit { width: 100%; min-height: 90px; margin-top: 8px; background: #06101c; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+    .api-list { display: grid; gap: 8px; margin: 12px 0; }
+    .api-list div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #081628; }
+    .api-list code { color: var(--cyan); }
+    #api-result { white-space: pre-wrap; margin: 10px 0 0; background: #06101c; border-radius: 12px; padding: 12px; min-height: 24px; }
+    .card-grid, .health-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .integ, .health-card { border: 1px solid rgba(90, 180, 230, 0.28); border-radius: 16px; padding: 14px; background: rgba(8, 22, 40, 0.72); }
+    .integ h2, .health-card h2 { margin: 6px 0; font-size: 18px; letter-spacing: 0; color: #f4fcff; text-transform: none; }
+    #security-extra { display: none; margin-top: 12px; }
+    .board[data-screen="security"] #security-extra { display: block; }
+    @media (max-width: 980px) { .tri, .card-grid, .health-grid { display: block; } }
+    .flow { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+    .step { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #081628; }
+    .label { color: var(--muted); font-size: 11px; letter-spacing: 0.14em; }
+    .stat { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+    .stat i { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); display: block; }
+    .stat b { display: block; font-size: 13px; }
+    .stat span, .hint, .rule { color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .value { color: var(--cyan); font-variant-numeric: tabular-nums; }
+    .orb { position: relative; min-height: 220px; display: grid; place-items: center; }
+    .orb svg { width: min(280px, 100%); height: auto; }
+    .orb-copy { position: absolute; text-align: center; }
+    h1 { margin: 0; color: var(--cyan); letter-spacing: 0.18em; font-size: 28px; font-weight: 600; }
+    .core-kicker { color: var(--cyan); letter-spacing: 0.22em; font-size: 11px; }
+    .board:not([data-screen]) .panel { display: none; }
+    .board:not([data-screen]) #core {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      grid-column: 1 / -1;
+      grid-row: 1 / -1;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      padding: 2px 2px 0;
+    }
+    .dash-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+    .dash-top h1 { letter-spacing: 0.01em; font-size: 28px; color: #f4fcff; text-transform: none; }
+    .dash-mode {
+      text-align: right;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(80, 170, 220, 0.28);
+      background: rgba(8, 24, 44, 0.72);
+    }
+    .dash-mode strong { font-size: 18px; }
+    .tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .tile {
+      min-height: 72px;
+      border: 0;
+      border-radius: 4px;
+      color: #fff;
+      font-weight: 700;
+      text-align: left;
+      padding: 12px 14px;
+    }
+    .tile small { display: block; margin-top: 4px; font-size: 12px; font-weight: 500; opacity: 0.92; }
+    .t-blue { background: #1e88e5; }
+    .t-green { background: #43a047; }
+    .t-orange { background: #fb8c00; }
+    .t-red { background: #e53935; }
+    .t-indigo { background: #3949ab; }
+    .t-cyan { background: #00acc1; }
+    .t-amber { background: #f9a825; color: #1a1400; }
+    .t-teal { background: #00897b; }
+    .dash-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+    .metric {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(16, 42, 74, 0.95), rgba(7, 20, 38, 0.92));
+      border: 1px solid rgba(90, 180, 230, 0.28);
+      border-radius: 18px;
+      padding: 16px 18px 14px 20px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+    }
+    .metric::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: linear-gradient(#7af6ff, #2f7bff);
+    }
+    .metric:nth-child(2)::before { background: #3ddc97; }
+    .metric:nth-child(3)::before { background: #e4b15c; }
+    .metric:nth-child(4)::before { background: #7aa2ff; }
+    .metric:nth-child(5)::before { background: #3ce7ff; }
+    .metric span, .metric small { display: block; color: var(--muted); }
+    .metric span { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+    .metric strong { display: block; margin: 10px 0 2px; font-size: 40px; line-height: 1; color: #f4fcff; font-variant-numeric: tabular-nums; }
+    .metric small { font-size: 12px; }
+    .dash-split, .home-low { display: grid; gap: 14px; min-height: 0; align-items: start; }
+    .dash-split { grid-template-columns: 1.15fr 0.85fr; }
+    .home-low { grid-template-columns: 1.2fr 0.8fr 0.9fr; }
+    .assist { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: center; }
+    .assist img { width: 120px; height: 140px; object-fit: cover; object-position: left center; border-radius: 14px; }
+    .assist h2 { margin: 0; font-size: 18px; letter-spacing: 0.04em; color: #f4fcff; }
+    .jumps, .sys-list, .quick-stats { display: grid; gap: 8px; }
+    .jumps { grid-template-columns: 1fr 1fr; margin-top: 10px; }
+    .jumps button, .sys-list div, .quick-stats div {
+      border: 1px solid rgba(90, 180, 230, 0.28);
+      background: rgba(6, 18, 34, 0.65);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .sys-list div, .quick-stats div { display: flex; justify-content: space-between; gap: 8px; }
+    .quick-stats { grid-template-columns: 1fr 1fr; }
+    .quick-stats strong { color: #f4fcff; font-variant-numeric: tabular-nums; }
+    .metric-block {
+      min-width: 0;
+      overflow: auto;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(90, 180, 230, 0.28);
+      background: linear-gradient(180deg, rgba(12, 32, 58, 0.92), rgba(7, 18, 34, 0.9));
+    }
+    .bar-row { display: grid; grid-template-columns: 92px 1fr 32px; gap: 10px; align-items: center; margin: 14px 0; color: #d7ebf6; }
+    .bar { height: 10px; border-radius: 99px; background: #0c1e33; overflow: hidden; }
+    .bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #39d4ff, #2f7bff); box-shadow: 0 0 12px rgba(60, 231, 255, 0.45); }
+    #dash-activity .note { background: rgba(6, 18, 34, 0.65); }
+    #dash-activity .meta strong { color: #f4fcff; font-size: 14px; }
+    @media (max-width: 980px) {
+      .tiles, .dash-cards, .dash-split, .home-low, .jumps, .quick-stats { display: block; }
+      .tile { margin-bottom: 10px; }
+      .metric, .jumps button, .quick-stats div { margin-bottom: 10px; }
+      .metric { margin-bottom: 10px; }
+    }
+    .stack { display: flex; flex-direction: column; gap: 8px; }
+    .note, .person, .item {
+      background: #081628;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+    .person { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+    .text, .reply { margin: 6px 0 0; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .reply { color: var(--amber); }
+    .pill { color: var(--cyan); font-size: 11px; letter-spacing: 0.06em; }
+    .pill.skip { color: var(--danger); }
+    .pill.hold { color: var(--muted); }
+    .pill.sent { color: var(--ok); }
+    .actions, .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row > * { flex: 1; min-width: 0; }
+    .note button, .person button { padding: 6px 10px; }
+    form.stack textarea, .field input, .field textarea, .live input, .live select, .live textarea, .commands select { width: 100%; }
+    input, textarea, select {
+      background: #081321;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { border-color: var(--cyan); }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+    .talk {
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      border: 1px solid rgba(60, 231, 255, 0.7);
+      border-radius: 18px;
+      padding: 8px 16px;
+      background: #0a1c30;
+    }
+    .talk form { display: flex; gap: 8px; width: min(640px, 100%); }
+    .eq { color: var(--cyan); letter-spacing: 2px; }
+    details summary { cursor: pointer; color: var(--muted); margin: 8px 0; }
+    #gate {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 420px);
+      gap: 28px;
+      align-items: center;
+      padding: 28px 36px;
+      background:
+        radial-gradient(700px 380px at 18% 42%, rgba(0, 160, 255, 0.16), transparent 62%),
+        radial-gradient(480px 280px at 78% 12%, rgba(0, 80, 180, 0.22), transparent 60%),
+        #04101f;
+    }
+    #gate[hidden], .app[hidden] { display: none !important; }
+    .gate-hero img {
+      width: 100%;
+      height: min(72vh, 640px);
+      object-fit: cover;
+      object-position: left center;
+      border-radius: 24px;
+      border: 1px solid rgba(80, 190, 255, 0.35);
+      box-shadow: 0 0 48px rgba(0, 140, 255, 0.18);
+    }
+    .gate-card {
+      border: 1px solid rgba(70, 180, 255, 0.55);
+      border-radius: 22px;
+      padding: 28px 24px 22px;
+      background: rgba(5, 20, 46, 0.88);
+      box-shadow: 0 0 36px rgba(0, 140, 255, 0.2), inset 0 0 0 1px rgba(120, 210, 255, 0.08);
+    }
+    .gate-badge {
+      width: 64px; height: 64px; margin: 0 auto 12px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: #7ee7ff; font-size: 28px; font-weight: 700;
+      border: 1px solid rgba(90, 200, 255, 0.7);
+      background: radial-gradient(circle at 50% 40%, #123a66, #071426 70%);
+      box-shadow: 0 0 18px rgba(0, 170, 255, 0.35);
+    }
+    #gate h1 { margin: 0; text-align: center; font-size: 32px; }
+    #gate h1 span { color: #3ce7ff; }
+    #gate .lede { margin: 6px 0 16px; text-align: center; color: #9fb4c9; }
+    #gate form { display: grid; gap: 12px; }
+    #gate input[type="email"], #gate input[type="password"], #gate input[type="text"] {
+      width: 100%;
+      background: rgba(4, 16, 36, 0.8);
+      border: 1px solid rgba(80, 170, 220, 0.45);
+      border-radius: 12px;
+      padding: 13px 14px;
+    }
+    .gate-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #c5d7e6; font-size: 14px; }
+    #gate-forgot, #gate-google, #gate-switch { background: transparent; color: #9fdfff; border: 0; padding: 0; }
+    #gate-submit {
+      border: 0; border-radius: 12px; padding: 13px 16px; font-weight: 700;
+      color: #041018;
+      background: linear-gradient(90deg, #39d4ff, #2f7bff);
+    }
+    #gate-google {
+      border: 1px solid rgba(80, 170, 220, 0.45);
+      border-radius: 12px;
+      padding: 12px;
+      color: #e7f7ff;
+    }
+    .gate-or { text-align: center; color: #7e9bb3; font-size: 13px; }
+    #gate-error { color: var(--danger); min-height: 1.2em; }
+    #gate-switch { justify-self: center; padding: 4px; }
+    @media (max-width: 900px) {
+      #gate { grid-template-columns: 1fr; padding: 16px; }
+      .gate-hero { display: none; }
+    }
+    .empty { color: var(--muted); padding: 12px 0; }
+    @media (max-width: 980px) {
+      .app { display: block; height: auto; }
+      .side { width: auto; }
+      .voice { margin-top: 12px; }
+      .board, .core { display: block; }
+      .top { grid-template-columns: 1fr; }
+      .mode-pill, .clock { justify-self: start; }
+      .panel { margin-bottom: 12px; overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+  <main id="gate">
+    <section class="gate-hero">
+      <img src="/login-art.jpg?v=2" alt="JARVIS admin" />
+    </section>
+    <section class="gate-card">
+      <div class="gate-badge">J</div>
+      <h1 id="gate-title">Admin <span>Login</span></h1>
+      <p class="lede">Sign in to access JARVIS Control Center</p>
+      <form id="gate-form">
+        <input id="gate-name" type="text" placeholder="Name" hidden />
+        <input id="gate-email" type="email" placeholder="Email Address" autocomplete="username" required />
+        <input id="gate-password" type="password" placeholder="Password" autocomplete="current-password" minlength="5" required />
+        <div class="gate-row">
+          <label><input id="gate-remember" type="checkbox" checked /> Remember Me</label>
+          <button id="gate-forgot" type="button">Forgot Password?</button>
+        </div>
+        <p id="gate-error"></p>
+        <button id="gate-submit" type="submit">Login</button>
+        <div class="gate-or">or</div>
+        <button id="gate-google" type="button">Continue with Google</button>
+        <button id="gate-switch" type="button">Naya account banao</button>
+      </form>
+    </section>
+  </main>
+  <div class="app" hidden>
+    <aside class="side">
+      <div class="brand">
+        <div class="mark">J</div>
+        <div>
+          <strong>JARVIS</strong>
+          <span>COMMAND CENTER</span>
+        </div>
+      </div>
+      <button class="nav active" type="button" data-screen="home">Main Dashboard</button>
+      <button class="nav" type="button" data-screen="inbox">AI Inbox</button>
+      <button class="nav" type="button" data-screen="approval">Approval <em id="nav-pending" hidden></em></button>
+      <button class="nav" type="button" data-screen="channels">Gmail & WhatsApp</button>
+      <button class="nav" type="button" data-screen="rules">Automation</button>
+      <button class="nav" type="button" data-screen="brain">AI Brain</button>
+      <button class="nav" type="button" data-screen="security">Security</button>
+      <button class="nav" type="button" data-screen="devices">Devices</button>
+      <button class="nav" type="button" data-screen="health">System Health</button>
+      <button class="nav" type="button" data-screen="api">API</button>
+      <button class="nav" type="button" data-screen="people">Contacts</button>
+      <button class="nav" type="button" data-screen="desk">Desk</button>
+      <div class="voice">
+        <div class="label">VOICE STATUS</div>
+        <p id="voice-state">Standby</p>
+        <button type="button" id="focus-talk">Tap to speak</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="top">
+        <input id="search" class="search" type="search" placeholder="Search log" />
+        <div class="clock">
+          <small id="clock-date"></small>
+          <div id="clock-time"></div>
+        </div>
+        <div class="top-right">
+          <div class="status">
+            <span id="dot" class="dot"></span>
+            <span>SYSTEM · <span id="status-label">CHECKING</span></span>
+          </div>
+          <button class="head-who" type="button" data-screen="profile">
+            <span class="avatar" id="head-mark">J</span>
+            <span>
+              <strong id="head-name">Account</strong>
+              <small id="head-email"></small>
+            </span>
+          </button>
+        </div>
+      </header>
+      <div id="error" class="error"></div>
+      <div id="saved" class="saved">Settings saved.</div>
+      <div class="board">
+        <section class="panel" id="profile">
+          <div class="label">PROFILE</div>
+          <div class="profile-card">
+            <div class="avatar lg" id="profile-avatar">J</div>
+            <div>
+              <h1 id="profile-heading">Account</h1>
+              <p id="profile-mail"></p>
+            </div>
+          </div>
+          <dl class="facts">
+            <div><dt>Name</dt><dd id="profile-detail-name">—</dd></div>
+            <div><dt>Email</dt><dd id="profile-detail-email">—</dd></div>
+            <div><dt>Login</dt><dd>This computer only</dd></div>
+            <div><dt>Google</dt><dd>Not connected</dd></div>
+          </dl>
+          <div class="profile-actions">
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/delete-account">Delete account</a>
+            <button id="profile-sign-out" type="button">Sign out</button>
+          </div>
+        </section>
+        <section class="panel core" id="core">
+          <div class="dash-top">
+            <div>
+              <div class="label">MAIN DASHBOARD</div>
+              <h1>Welcome back, <span id="welcome-name">Admin</span></h1>
+              <p class="hint" id="brief"></p>
+            </div>
+            <div class="dash-mode">
+              <div class="label">AI MODE</div>
+              <strong id="mode" class="value">—</strong>
+              <div class="hint">Uptime <span id="uptime">—</span></div>
+              <p class="hint" id="assist-line"></p>
+            </div>
+          </div>
+          <div class="tiles">
+            <button class="tile t-blue" type="button" data-jump="inbox">Inbox<small>Gmail, WhatsApp, alerts</small></button>
+            <button class="tile t-green" type="button" data-jump="approval">Approval<small>Pending replies</small></button>
+            <button class="tile t-orange" type="button" data-jump="people">Contacts<small>Who can get a reply</small></button>
+            <button class="tile t-red" type="button" data-jump="rules">Automation<small>If / then rules</small></button>
+            <button class="tile t-indigo" type="button" data-jump="channels">Gmail & WhatsApp<small>Connection status</small></button>
+            <button class="tile t-cyan" type="button" data-jump="brain">AI Brain<small>Prompt and memory</small></button>
+            <button class="tile t-amber" type="button" data-jump="security">Security<small>Session and stop</small></button>
+            <button class="tile t-teal" type="button" data-jump="devices">Devices<small>Phone and this page</small></button>
+            <button class="tile t-blue" type="button" data-jump="health">Health<small>API and uptime</small></button>
+            <button class="tile t-indigo" type="button" data-jump="api">API<small>How this backend works</small></button>
+            <button class="tile t-green" type="button" data-jump="desk">Desk<small>Talk to JARVIS</small></button>
+          </div>
+          <div class="dash-cards">
+            <article class="metric"><span>Total messages</span><strong id="in-log">—</strong><small>Logged in the inbox</small></article>
+            <article class="metric"><span>WhatsApp</span><strong id="dash-whatsapp">—</strong><small>Logged chats</small></article>
+            <article class="metric"><span>Gmail</span><strong id="dash-gmail">—</strong><small>Logged mail</small></article>
+            <article class="metric"><span>Active contacts</span><strong id="dash-contacts">—</strong><small>Allowed to receive a reply</small></article>
+            <article class="metric"><span>AI activity</span><strong id="handled">—</strong><small>Replies handled</small></article>
+          </div>
+          <div class="dash-split">
+            <div class="metric-block">
+              <div class="label">INBOX NOW</div>
+              <div id="buckets"></div>
+              <div id="mix" class="mix"></div>
+            </div>
+            <div class="metric-block assist">
+              <img src="/login-art.jpg?v=2" alt="" />
+              <div>
+                <div class="label">ASSISTANT</div>
+                <h2 id="title">JARVIS</h2>
+                <p class="hint">Tap to speak opens the desk. Gmail and WhatsApp are not connected, so nothing is sent from those apps.</p>
+              </div>
+            </div>
+          </div>
+          <div class="home-low">
+            <div class="metric-block">
+              <div class="label">RECENT MESSAGES</div>
+              <div id="dash-activity" class="stack"></div>
+              <p class="rule">Sirf approved contacts ko reply. Operational contacts chup rahenge.</p>
+            </div>
+            <div class="metric-block">
+              <div class="label">QUICK ACTIONS</div>
+              <div class="jumps">
+                <button type="button" data-jump="inbox">Quick message</button>
+                <button type="button" data-jump="people">Manage contacts</button>
+                <button type="button" data-jump="rules">Create rule</button>
+                <button type="button" data-jump="reports">View reports</button>
+                <button type="button" data-jump="approval">Approval</button>
+                <button type="button" data-jump="stop">Emergency stop</button>
+              </div>
+              <div class="label" style="margin-top:14px">TODAY</div>
+              <div class="quick-stats">
+                <div><span>Pending</span><strong id="dash-pending">—</strong></div>
+                <div><span>Replied</span><strong id="stat-replied">—</strong></div>
+                <div><span>Held</span><strong id="stat-held">—</strong></div>
+                <div><span>Skipped</span><strong id="stat-skipped">—</strong></div>
+              </div>
+            </div>
+            <div class="metric-block">
+              <div class="label">SYSTEM STATUS</div>
+              <div class="sys-list">
+                <div><span>Backend</span><b id="sys-backend">Checking</b></div>
+                <div><span>Emergency stop</span><b id="sys-stop">—</b></div>
+                <div><span>Gmail</span><b>Not connected</b></div>
+                <div><span>WhatsApp</span><b>Not connected</b></div>
+              </div>
+              <p class="hint" id="dash-sync"></p>
+            </div>
+          </div>
+        </section>
+        <section class="panel live" id="live">
+          <div class="label" id="live-title">AI INBOX</div>
+          <div class="filters" id="inbox-filters">
+            <button type="button" data-inbox-filter="all" class="on">All</button>
+            <button type="button" data-inbox-filter="gmail">Gmail</button>
+            <button type="button" data-inbox-filter="whatsapp">WhatsApp</button>
+            <button type="button" data-inbox-filter="open">Needs you</button>
+            <button type="button" data-inbox-filter="history">History</button>
+          </div>
+          <input id="inbox-search" class="search" type="search" placeholder="Search messages" />
+          <p class="hint" id="control-hint"></p>
+          <p class="hint" id="module-note"></p>
+          <div class="tri">
+            <div id="inbox" class="stack"></div>
+            <div id="chat-pane"></div>
+            <div id="reply-pane"></div>
+          </div>
+          <div id="history-list" class="stack"></div>
+          <details>
+            <summary>Log a message</summary>
+            <form id="inbox-form" class="stack">
+              <input id="in-sender" placeholder="Sender" required maxlength="80" />
+              <input id="in-handle" placeholder="Email or phone" maxlength="120" />
+              <select id="in-channel">
+                <option value="gmail">Gmail</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="notification">Alert</option>
+              </select>
+              <textarea id="in-body" placeholder="Paste the business message" required maxlength="4000"></textarea>
+              <button class="save" type="submit">Log message</button>
+            </form>
+          </details>
+        </section>
+        <section class="panel people" id="people-panel">
+          <div class="label">CONTACT MANAGER</div>
+          <form id="person-form" class="stack">
+            <div class="row">
+              <input id="person-name" placeholder="Name" required maxlength="80" />
+              <input id="person-handle" placeholder="Email or phone" required maxlength="120" />
+            </div>
+            <div class="row">
+              <select id="person-channel">
+                <option value="gmail">Gmail</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="notification">Alert</option>
+              </select>
+              <select id="person-role">
+                <option value="business">Reply</option>
+                <option value="operational">Operational</option>
+              </select>
+              <button class="save" type="submit">Add</button>
+            </div>
+          </form>
+          <div id="people" class="stack"></div>
+          <p class="hint">Quiet · operational. Inhe reply nahi jayega.</p>
+          <div id="quiet" class="stack"></div>
+        </section>
+        <section class="panel timeline" id="timeline">
+          <div class="label">MEMORY AND DESK LOG</div>
+          <div class="list stack" id="list"></div>
+          <div id="audit" class="stack"></div>
+          <button class="clear" id="clear" type="button">Clear log</button>
+          <button class="clear" id="clear-memory" type="button">Delete saved drafts</button>
+        </section>
+        <section class="panel commands" id="commands">
+          <div class="label">QUICK COMMANDS</div>
+          <div class="chips">
+            <button class="chip" type="button" data-text="Aaj ke sare business messages batao">Briefing</button>
+            <button class="chip" type="button" data-text="Mere approved contacts ki list kholo">Contacts</button>
+            <button class="chip" type="button" data-text="Pehle meri approval">Approval</button>
+            <button class="chip" type="button" data-text="Aaj ke liye sabhi automatic replies band kar do">Auto off</button>
+          </div>
+          <div class="label" style="margin-top: 12px">REPLY CONTROL</div>
+          <div class="stack" style="margin-top: 8px">
+            <select id="reply-mode">
+              <option value="approval">Approval first</option>
+              <option value="auto">Auto · approved only</option>
+              <option value="both">Both</option>
+            </select>
+            <div class="row">
+              <button class="save" id="save-mode" type="button">Save</button>
+              <button class="clear" id="emergency" type="button">Emergency stop</button>
+            </div>
+          </div>
+          <details>
+            <summary>Assistant settings</summary>
+            <form id="settings-form">
+              <label class="field"><span class="label">Name</span><input id="name" name="name" required maxlength="40" /></label>
+              <label class="field"><span class="label">Model</span><input id="model" name="model" required maxlength="80" /></label>
+              <label class="field"><span class="label">System prompt</span><textarea id="prompt" name="system_prompt" required maxlength="2000"></textarea></label>
+              <p class="hint" id="mode-hint"></p>
+              <button class="save" type="submit">Save</button>
+            </form>
+          </details>
+          <p class="hint">Sensitive messages need extra approval. Unknown people get no reply.</p>
+          <div id="security-extra">
+            <div class="label">THIS SESSION</div>
+            <p id="session-line">Sign in to see this account.</p>
+            <p class="hint">Older login history is not stored. Only this browser session is known.</p>
+            <div class="label">API</div>
+            <p class="hint">The phone and this page call the same local API. There is no separate API key.</p>
+            <div class="label">ACCESS</div>
+            <p class="hint">One owner account on this computer. Password is stored only as a hash.</p>
+          </div>
+        </section>
+        <section class="panel extra" id="rules">
+          <div class="label">AUTOMATION</div>
+          <div class="flow">
+            <div class="step">If emergency stop is on, then no reply is sent.</div>
+            <div class="step">If the person is operational or blocked, then the message is skipped.</div>
+            <div class="step">If the person is unknown, then the message is held. No draft is guessed.</div>
+            <div class="step">If the person is an approved business contact and mode is Auto, then a reply can queue. Sensitive words still wait.</div>
+            <div class="step">If mode is Approval, then you approve the draft first.</div>
+          </div>
+          <div class="row">
+            <button class="save" id="rule-approval" type="button">Approval ke baad reply</button>
+            <button class="chip" id="rule-auto" type="button">Approved contacts auto</button>
+          </div>
+          <p class="hint" id="rule-state"></p>
+          <p class="hint">No scheduled task is saved. Price, time, and OTP are not guessed.</p>
+        </section>
+        <section class="panel extra" id="devices">
+          <div class="label">DEVICE MANAGER</div>
+          <div class="card-grid">
+            <article class="integ">
+              <div class="label">ANDROID</div>
+              <h2>Phone</h2>
+              <p class="hint">No device session is stored. A phone shows up here only by sending its own notifications into this inbox.</p>
+            </article>
+            <article class="integ">
+              <div class="label">DESKTOP</div>
+              <h2>This admin page</h2>
+              <p class="hint" id="sync-time"></p>
+            </article>
+          </div>
+          <p class="hint">Both use the same API on this computer. There is no remote disconnect, because the phone does not keep a separate session.</p>
+        </section>
+        <section class="panel extra" id="channels">
+          <div class="label">GMAIL AND WHATSAPP</div>
+          <div class="card-grid">
+            <article class="integ">
+              <div class="label">GMAIL</div>
+              <h2 id="gmail-state">Not connected</h2>
+              <p class="hint">Gmail OAuth is not connected. Mail appears here only when you log it, or when Android notification access sends it.</p>
+              <button id="gmail-connect" type="button">Connect Gmail</button>
+            </article>
+            <article class="integ">
+              <div class="label">WHATSAPP</div>
+              <h2 id="whatsapp-state">Not connected</h2>
+              <p class="hint">WhatsApp Business API is not connected. Chats appear here only when they are logged or read from your own Android notifications.</p>
+              <button id="whatsapp-connect" type="button">Connect WhatsApp</button>
+            </article>
+          </div>
+        </section>
+        <section class="panel extra" id="health">
+          <div class="label">SYSTEM HEALTH</div>
+          <div class="health-grid">
+            <article class="health-card"><div class="label">BACKEND</div><h2 id="health-backend">Checking</h2><p class="hint">This API process.</p></article>
+            <article class="health-card"><div class="label">DATA FILE</div><h2>Local file</h2><p class="hint">Contacts, inbox, and settings are in one file on this computer. There is no separate database server.</p></article>
+            <article class="health-card"><div class="label">API RESPONSE</div><h2 id="health-ms">—</h2><p class="hint">Time for the last overview request from this page.</p></article>
+            <article class="health-card"><div class="label">CPU / RAM</div><h2>Not measured</h2><p class="hint">This page does not read processor or memory gauges.</p></article>
+            <article class="health-card"><div class="label">UPTIME</div><h2 id="health-uptime">—</h2><p class="hint">Since this API process started.</p></article>
+            <article class="health-card"><div class="label">LAST ERROR</div><h2 id="health-error">None</h2></article>
+          </div>
+        </section>
+        <section class="panel extra" id="api-panel">
+          <div class="label">API</div>
+          <h2>Yeh API kaise kaam karti hai</h2>
+          <p class="hint">Phone app aur yeh admin page ek hi backend se baat karte hain. Is browser ka address <strong id="api-base">http://127.0.0.1:8000</strong> hai. Android emulator isi computer ko <strong>http://10.0.2.2:8000</strong> se pakadta hai.</p>
+          <div class="card-grid">
+            <article class="integ">
+              <div class="label">MODEL</div>
+              <h2 id="api-mode">LOCAL</h2>
+              <p class="hint">OpenAI tabhi chalta hai jab backend folder ki .env file mein OPENAI_API_KEY ho. Bina key ke jawab isi computer par banta hai.</p>
+            </article>
+            <article class="integ">
+              <div class="label">LOGIN</div>
+              <h2>Account token</h2>
+              <p class="hint">Login token sirf account page ke liye hai. Inbox, phone, aur overview isi computer par token ke bina chalte hain. Yeh API internet par open nahi hai.</p>
+            </article>
+          </div>
+          <div class="api-list">
+            <div><code>GET /</code><span>Backend zinda hai ya nahi. Jawab mein assistant ka naam aur mode aata hai.</span></div>
+            <div><code>POST /message</code><span>Desk aur voice. Body: {"text":"Aaj ke messages batao"}. Jawab {"reply":"..."}.</span></div>
+            <div><code>GET /api/admin/overview</code><span>Dashboard, inbox, contacts, aur settings. Yeh page har 3 second par yahi maangta hai.</span></div>
+            <div><code>POST /api/inbox</code><span>Message log karo. Body mein channel, sender, aur body hota hai. Gmail ya WhatsApp khud se nahi aata.</span></div>
+            <div><code>POST /api/inbox/{id}/send</code><span>Approve. Emergency stop on ho to reply nahi jaata.</span></div>
+            <div><code>POST /api/inbox/{id}/skip</code><span>Reject. Us message ka reply nahi banta.</span></div>
+            <div><code>POST /api/contacts</code><span>Naam jodo. role business ho to reply list, operational ho to skip.</span></div>
+            <div><code>POST /api/control</code><span>Reply mode approval, auto, ya both. Saath mein emergency_stop true ya false.</span></div>
+            <div><code>POST /api/account/login</code><span>Admin login. Body: email aur password. Token wapas aata hai.</span></div>
+          </div>
+          <button class="save" id="api-check" type="button">Check API</button>
+          <pre id="api-result"></pre>
+        </section>
+      </div>
+      <footer class="talk" id="talk">
+        <span class="eq">⌁ ⌁ ⌁</span>
+        <form id="form">
+          <input id="text" name="text" placeholder="TALK TO JARVIS" autocomplete="off" required />
+          <button class="send" type="submit">Send</button>
+        </form>
+        <span class="eq">⌁ ⌁ ⌁</span>
+      </footer>
+    </div>
+  </div>
+  <script>
+    const statusLabel = document.getElementById("status-label");
+    const dot = document.getElementById("dot");
+    const errorBox = document.getElementById("error");
+    const savedBox = document.getElementById("saved");
+    const list = document.getElementById("list");
+    const search = document.getElementById("search");
+    let messages = [];
+    let contacts = [];
+    let inbox = [];
+    let moduleName = "home";
+    let settingsReady = false;
+    let emergencyOn = false;
+    let selectedId = null;
+    let inboxFilter = "all";
+    let lastMs = null;
+    let lastError = "";
+
+    function formatUptime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+    }
+
+    function showError(message) {
+      errorBox.style.display = message ? "block" : "none";
+      errorBox.textContent = message || "";
+      if (message) {
+        savedBox.style.display = "none";
+        lastError = message;
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function visibleMessages() {
+      const query = search.value.trim().toLowerCase();
+      if (!query) return messages;
+      return messages.filter((item) =>
+        item.text.toLowerCase().includes(query) || item.reply.toLowerCase().includes(query)
+      );
+    }
+
+    function renderLog() {
+      const visible = visibleMessages();
+      document.getElementById("in-log").textContent = messages.length;
+      if (!messages.length) {
+        list.innerHTML = '<div class="empty">Waiting for the first message.</div>';
+        return;
+      }
+      if (!visible.length) {
+        list.innerHTML = '<div class="empty">No messages match that search.</div>';
+        return;
+      }
+      list.innerHTML = visible.map((item) => `
+        <article class="item">
+          <div class="meta">
+            <span>#${item.id} · <span class="pill ${item.source === "ai" ? "" : ""}">${item.source === "ai" ? "AI" : "LOCAL"}</span></span>
+            <time>${new Date(item.time).toLocaleTimeString()}</time>
+          </div>
+          <p class="text">${escapeHtml(item.text)}</p>
+          <p class="reply">${escapeHtml(item.reply)}</p>
+        </article>
+      `).join("");
+    }
+
+    function fillSettings(settings, mode) {
+      const editing = document.activeElement && document.activeElement.closest("#settings-form");
+      if (!settingsReady && !editing) {
+        document.getElementById("name").value = settings.name;
+        document.getElementById("model").value = settings.model;
+        document.getElementById("prompt").value = settings.system_prompt;
+        settingsReady = true;
+      }
+      document.getElementById("mode-hint").textContent = mode === "openai"
+        ? "OpenAI is connected."
+        : "Local mode. Add OPENAI_API_KEY in backend/.env for open questions.";
+    }
+
+    function render(data) {
+      showError("");
+      const stopped = Boolean(data.settings && data.settings.emergency_stop);
+      emergencyOn = stopped;
+      const online = data.status === "online";
+      statusLabel.textContent = !online ? "OFFLINE" : stopped ? "STOPPED" : "OPTIMAL";
+      dot.classList.toggle("off", !online || stopped);
+      document.getElementById("voice-state").textContent = !online || stopped ? "Standby" : "Listening";
+      document.getElementById("title").textContent = data.assistant;
+      document.getElementById("uptime").textContent = formatUptime(data.uptime_seconds);
+      document.getElementById("handled").textContent = data.handled;
+      document.getElementById("mode").textContent = data.mode === "openai" ? "OPENAI" : "LOCAL";
+      document.getElementById("api-mode").textContent = data.mode === "openai" ? "OPENAI" : "LOCAL";
+      document.getElementById("api-base").textContent = location.origin;
+      messages = data.messages || [];
+      contacts = data.contacts || [];
+      inbox = data.inbox || [];
+      fillSettings(data.settings, data.mode);
+      const mode = data.settings.reply_mode || "approval";
+      if (document.activeElement !== document.getElementById("reply-mode")) {
+        document.getElementById("reply-mode").value = mode;
+      }
+      document.getElementById("emergency").textContent = stopped ? "Resume replies" : "Emergency stop";
+      document.getElementById("control-hint").textContent = stopped
+        ? "Emergency stop is on. No reply can be sent."
+        : "Phone app aur yeh page ek hi API use karte hain.";
+      const urgent = inbox.filter((item) => item.priority === "urgent").length;
+      const normal = inbox.filter((item) => item.priority === "business").length;
+      const pending = inbox.filter((item) => item.status === "pending").length;
+      const gmail = inbox.filter((item) => item.channel === "gmail").length;
+      const whatsapp = inbox.filter((item) => item.channel === "whatsapp").length;
+      const alerts = inbox.filter((item) => item.channel === "notification").length;
+      const scale = Math.max(gmail, whatsapp, alerts, 1);
+      const bar = (label, count) => `<div class="bar-row"><span>${label}</span><div class="bar"><i style="width:${Math.round((count / scale) * 100)}%"></i></div><b>${count}</b></div>`;
+      document.getElementById("buckets").innerHTML = bar("Gmail", gmail) + bar("WhatsApp", whatsapp) + bar("Alerts", alerts);
+      const replied = inbox.filter((item) => item.status === "replied").length;
+      const held = inbox.filter((item) => item.status === "held").length;
+      const skipped = inbox.filter((item) => item.status === "skipped").length;
+      const mixScale = Math.max(replied, pending, held, skipped, 1);
+      const mixBar = (label, count) => `<div class="bar-row"><span>${label}</span><div class="bar"><i style="width:${Math.round((count / mixScale) * 100)}%"></i></div><b>${count}</b></div>`;
+      document.getElementById("mix").innerHTML = mixBar("Replied", replied) + mixBar("Pending", pending) + mixBar("Held", held) + mixBar("Skipped", skipped);
+      document.getElementById("dash-contacts").textContent = contacts.filter((person) => person.role === "business").length;
+      document.getElementById("dash-pending").textContent = pending;
+      document.getElementById("dash-gmail").textContent = gmail;
+      document.getElementById("dash-whatsapp").textContent = whatsapp;
+      document.getElementById("stat-replied").textContent = replied;
+      document.getElementById("stat-held").textContent = held;
+      document.getElementById("stat-skipped").textContent = skipped;
+      document.getElementById("health-backend").textContent = online ? "Running" : "Offline";
+      document.getElementById("health-uptime").textContent = formatUptime(data.uptime_seconds);
+      document.getElementById("health-ms").textContent = lastMs == null ? "—" : `${lastMs} ms`;
+      document.getElementById("health-error").textContent = lastError || "None";
+      const ruleState = document.getElementById("rule-state");
+      if (ruleState) ruleState.textContent = stopped ? "Automation is blocked by emergency stop." : `Reply mode: ${mode}.`;
+      const badge = document.getElementById("nav-pending");
+      badge.hidden = pending === 0;
+      badge.textContent = pending ? String(pending) : "";
+      document.getElementById("sys-backend").textContent = online ? "Running" : "Offline";
+      document.getElementById("sys-stop").textContent = stopped ? "On" : "Off";
+      document.getElementById("assist-line").textContent = stopped
+        ? "Emergency stop is on. No reply can be sent."
+        : "Drafts stay here until you approve them.";
+      document.getElementById("brief").textContent = stopped
+        ? `Emergency stop is on. Inbox ${inbox.length}. Pending ${pending}.`
+        : `Inbox ${inbox.length}. Pending ${pending}. Business ${normal + urgent}.`;
+      document.getElementById("dash-activity").innerHTML = inbox.length
+        ? inbox.slice(0, 5).map((item) => {
+            const when = item.time ? new Date(item.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+            return `<article class="note"><div class="meta"><strong>${escapeHtml(item.sender || "")}</strong><span>${escapeHtml(when)}</span></div><p class="text">${escapeHtml(item.body || "")}</p><span class="pill ${statusClass(item.status)}">${escapeHtml(channelName(item.channel))} · ${escapeHtml(item.status || "")}</span></article>`;
+          }).join("")
+        : '<div class="empty">Abhi koi message logged nahi.</div>';
+      const sync = document.getElementById("sync-time");
+      if (sync) sync.textContent = `Last sync ${new Date(data.synced_at || Date.now()).toLocaleTimeString()}. Phone aur desktop yahi inbox dekhte hain.`;
+      const dashSync = document.getElementById("dash-sync");
+      if (dashSync) dashSync.textContent = `Last refresh ${new Date(data.synced_at || Date.now()).toLocaleTimeString()}. Phone and this page share one inbox.`;
+      const audit = data.audit || [];
+      document.getElementById("audit").innerHTML = audit.length
+        ? audit.slice(0, 12).map((item) => `<article class="note"><p class="text"><strong>${escapeHtml(item.sender || "")}</strong> · ${escapeHtml(item.channel || "")}</p><p class="reply">${escapeHtml(item.draft || "")}</p></article>`).join("")
+        : '<div class="empty">No saved reply memory yet.</div>';
+      renderPeople();
+      renderInbox();
+      renderLog();
+      document.getElementById("in-log").textContent = inbox.length;
+    }
+
+    function channelName(channel) {
+      if (channel === "gmail") return "Gmail";
+      if (channel === "whatsapp") return "WhatsApp";
+      return "Alert";
+    }
+
+    function statusClass(status) {
+      if (status === "skipped") return "skip";
+      if (status === "held") return "hold";
+      if (status === "replied") return "sent";
+      return "";
+    }
+
+    function renderPeople() {
+      const reply = contacts.filter((person) => person.role === "business");
+      const quiet = contacts.filter((person) => person.role !== "business");
+      document.getElementById("people").innerHTML = reply.length
+        ? reply.map(personCard).join("")
+        : '<div class="empty">Nobody on the reply list yet.</div>';
+      document.getElementById("quiet").innerHTML = quiet.length
+        ? quiet.map(personCard).join("")
+        : '<div class="empty">No operational contacts.</div>';
+    }
+
+    function personCard(person) {
+      return `
+        <article class="person">
+          <div>
+            <strong>${escapeHtml(person.name)}</strong>
+            <div class="meta">${escapeHtml(person.handle)} · ${channelName(person.channel)}${person.reply_until ? ` · reply till ${escapeHtml(String(person.reply_until).slice(0, 10))}` : ""}</div>
+          </div>
+          <button class="clear" type="button" data-remove="${person.id}">Remove</button>
+        </article>
+      `;
+    }
+
+    function filteredInbox() {
+      let rows = inbox.slice();
+      if (moduleName === "gmail") rows = rows.filter((item) => item.channel === "gmail");
+      else if (moduleName === "whatsapp") rows = rows.filter((item) => item.channel === "whatsapp");
+      else if (moduleName === "alerts") rows = rows.filter((item) => item.channel === "notification");
+      else if (moduleName === "approval") rows = rows.filter((item) => item.status === "pending");
+      else if (inboxFilter === "gmail") rows = rows.filter((item) => item.channel === "gmail");
+      else if (inboxFilter === "whatsapp") rows = rows.filter((item) => item.channel === "whatsapp");
+      else if (inboxFilter === "open") rows = rows.filter((item) => item.status === "pending" || item.status === "held");
+      else if (inboxFilter === "history") rows = rows.filter((item) => item.status === "replied" || item.status === "skipped");
+      const query = (document.getElementById("inbox-search").value || "").trim().toLowerCase();
+      if (query) {
+        rows = rows.filter((item) =>
+          `${item.sender || ""} ${item.body || ""} ${item.draft || ""}`.toLowerCase().includes(query)
+        );
+      }
+      return rows;
+    }
+
+    function renderInbox() {
+      const box = document.getElementById("inbox");
+      const rows = filteredInbox();
+      const titles = { approval: "APPROVAL", gmail: "GMAIL", whatsapp: "WHATSAPP", alerts: "ALERTS" };
+      document.getElementById("live-title").textContent = titles[moduleName] || "AI INBOX";
+      const notes = {
+        gmail: "Gmail OAuth abhi connected nahi. Jo mail yahan log hui, wahi dikhegi.",
+        whatsapp: "WhatsApp Business API abhi connected nahi. Logged chats yahan dikhengi.",
+        alerts: "Phone alerts. iPhone dusre apps ki notification nahi padhta.",
+        approval: "Draft taiyar hai. Reply tabhi queue hota hai jab aap approve karo.",
+        inbox: "Gmail, WhatsApp, aur alerts ek inbox mein. Read receipts are not tracked."
+      };
+      document.getElementById("module-note").textContent = notes[moduleName] || notes.inbox;
+      if (!rows.some((item) => item.id === selectedId)) selectedId = rows[0] ? rows[0].id : null;
+      const draftBox = document.getElementById("draft-edit");
+      const keepDraft = draftBox && document.activeElement === draftBox ? draftBox.value : null;
+      box.innerHTML = rows.length
+        ? rows.map((item) => `<button class="convo-item ${item.id === selectedId ? "active" : ""}" type="button" data-pick="${item.id}"><b>${escapeHtml(item.sender || "")}</b><span>${escapeHtml(channelName(item.channel))} · ${escapeHtml(item.status || "")}</span></button>`).join("")
+        : '<div class="empty">Is list mein abhi koi message nahi.</div>';
+      const item = rows.find((row) => row.id === selectedId);
+      const chat = document.getElementById("chat-pane");
+      const reply = document.getElementById("reply-pane");
+      if (!item) {
+        chat.innerHTML = '<div class="empty">Select a message.</div>';
+        reply.innerHTML = "";
+      } else {
+        const when = item.time ? new Date(item.time).toLocaleString() : "";
+        chat.innerHTML = `<div class="meta"><strong>${escapeHtml(item.sender || "")}</strong><span>${escapeHtml(when)}</span></div><p class="text">${escapeHtml(item.body || "")}</p>${item.explain ? `<p class="hint">${escapeHtml(item.explain)}</p>` : ""}<p class="hint">${escapeHtml(item.reason || "")}</p>`;
+        const canSend = item.decision === "reply" && item.status !== "replied";
+        const draftText = keepDraft != null ? keepDraft : (item.draft || "");
+        reply.innerHTML = `<div class="label">SUGGESTED REPLY</div>${item.draft || canSend ? `<textarea id="draft-edit" maxlength="2000">${escapeHtml(draftText)}</textarea>` : `<p class="hint">No draft. This person is not on the reply list.</p>`}<div class="actions">${canSend ? `<button class="save" type="button" data-send="${item.id}">Approve</button>` : ""}${item.status === "held" ? `<button class="save" type="button" data-allow="${item.id}">Add to reply list</button>` : ""}${item.status !== "replied" && item.status !== "skipped" ? `<button class="clear" type="button" data-skip="${item.id}">Reject</button>` : ""}</div>${item.status === "replied" ? `<p class="hint">Approved. The reply is queued on this computer.</p>` : ""}${item.status === "skipped" ? `<p class="hint">Rejected. No reply will be sent.</p>` : ""}`;
+      }
+      const history = document.getElementById("history-list");
+      if (moduleName === "approval") {
+        const done = inbox.filter((row) => row.status === "replied" || row.status === "skipped");
+        history.innerHTML = `<div class="label">APPROVED AND REJECTED</div>${done.length ? done.slice(0, 8).map((row) => `<article class="note"><div class="meta"><strong>${escapeHtml(row.sender || "")}</strong><span class="pill ${statusClass(row.status)}">${escapeHtml(row.status || "")}</span></div><p class="text">${escapeHtml(row.body || "")}</p></article>`).join("") : '<div class="empty">No approval history yet.</div>'}`;
+      } else {
+        history.innerHTML = "";
+      }
+    }
+
+    async function postJson(url, payload) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Request failed.");
+      }
+    }
+
+    async function refresh() {
+      try {
+        const started = performance.now();
+        const response = await fetch("/api/admin/overview");
+        lastMs = Math.round(performance.now() - started);
+        if (!response.ok) throw new Error("Could not load the admin overview.");
+        render(await response.json());
+      } catch (error) {
+        statusLabel.textContent = "OFFLINE";
+        dot.classList.add("off");
+        document.getElementById("voice-state").textContent = "Standby";
+        showError(error.message);
+      }
+    }
+
+    async function sendText(text) {
+      const response = await fetch("/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      if (!response.ok) throw new Error("JARVIS did not accept that message.");
+      await refresh();
+    }
+
+    document.getElementById("form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const input = document.getElementById("text");
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      try {
+        await sendText(input.value);
+        input.value = "";
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+
+    document.querySelectorAll(".chip").forEach((chip) => {
+      chip.addEventListener("click", async () => {
+        if (!chip.dataset.text) return;
+        chip.disabled = true;
+        try {
+          await sendText(chip.dataset.text);
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          chip.disabled = false;
+        }
+      });
+    });
+
+    document.getElementById("settings-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/admin/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: document.getElementById("name").value,
+            model: document.getElementById("model").value,
+            system_prompt: document.getElementById("prompt").value
+          })
+        });
+        if (!response.ok) throw new Error("Could not save settings.");
+        savedBox.style.display = "block";
+        settingsReady = true;
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("save-mode").addEventListener("click", async () => {
+      try {
+        await postJson("/api/control", {
+          reply_mode: document.getElementById("reply-mode").value,
+          emergency_stop: emergencyOn
+        });
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+
+    document.getElementById("emergency").addEventListener("click", async () => {
+      try {
+        await postJson("/api/control", {
+          reply_mode: document.getElementById("reply-mode").value,
+          emergency_stop: !emergencyOn
+        });
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+
+    document.getElementById("person-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      try {
+        await postJson("/api/contacts", {
+          name: document.getElementById("person-name").value,
+          handle: document.getElementById("person-handle").value,
+          channel: document.getElementById("person-channel").value,
+          role: document.getElementById("person-role").value,
+          auto_reply: false
+        });
+        event.currentTarget.reset();
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("inbox-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector("button");
+      button.disabled = true;
+      try {
+        await postJson("/api/inbox", {
+          sender: document.getElementById("in-sender").value,
+          handle: document.getElementById("in-handle").value,
+          channel: document.getElementById("in-channel").value,
+          body: document.getElementById("in-body").value
+        });
+        event.currentTarget.reset();
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("people").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-remove]");
+      if (!button) return;
+      await fetch(`/api/contacts/${button.dataset.remove}`, { method: "DELETE" });
+      await refresh();
+    });
+    document.getElementById("quiet").addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-remove]");
+      if (!button) return;
+      await fetch(`/api/contacts/${button.dataset.remove}`, { method: "DELETE" });
+      await refresh();
+    });
+    document.getElementById("live").addEventListener("click", async (event) => {
+      const pick = event.target.closest("[data-pick]");
+      if (pick && !event.target.closest("[data-send], [data-skip], [data-allow]")) {
+        selectedId = Number(pick.dataset.pick);
+        renderInbox();
+        return;
+      }
+      const button = event.target.closest("button");
+      if (!button) return;
+      try {
+        if (button.dataset.send) {
+          const draft = document.getElementById("draft-edit");
+          await postJson(`/api/inbox/${button.dataset.send}/send`, { draft: draft ? draft.value : "" });
+        }
+        if (button.dataset.skip) await postJson(`/api/inbox/${button.dataset.skip}/skip`, {});
+        if (button.dataset.allow) await postJson(`/api/inbox/${button.dataset.allow}/allow`, { role: "business", auto_reply: false });
+        await refresh();
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+    document.getElementById("inbox-filters").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-inbox-filter]");
+      if (!button) return;
+      inboxFilter = button.dataset.inboxFilter;
+      document.querySelectorAll("[data-inbox-filter]").forEach((item) => item.classList.toggle("on", item === button));
+      if (moduleName !== "inbox") openScreen("inbox");
+      else renderInbox();
+    });
+    document.getElementById("inbox-search").addEventListener("input", renderInbox);
+
+    search.addEventListener("input", renderLog);
+    document.getElementById("clear").addEventListener("click", async () => {
+      const response = await fetch("/api/admin/log", { method: "DELETE" });
+      if (!response.ok) {
+        showError("Could not clear the log.");
+        return;
+      }
+      await refresh();
+    });
+    document.getElementById("clear-memory").addEventListener("click", async () => {
+      const response = await fetch("/api/admin/audit", { method: "DELETE" });
+      if (!response.ok) {
+        showError("Could not delete saved drafts.");
+        return;
+      }
+      await refresh();
+    });
+    document.getElementById("gmail-connect").addEventListener("click", () => {
+      showError("Gmail OAuth connected nahi hai.");
+    });
+    document.getElementById("whatsapp-connect").addEventListener("click", () => {
+      showError("WhatsApp Business API connected nahi hai.");
+    });
+    document.getElementById("api-check").addEventListener("click", async () => {
+      const box = document.getElementById("api-result");
+      box.textContent = "Checking...";
+      try {
+        const started = performance.now();
+        const response = await fetch("/");
+        const data = await response.json();
+        const ms = Math.round(performance.now() - started);
+        box.textContent = response.ok
+          ? `${response.status} in ${ms} ms\n${JSON.stringify(data, null, 2)}`
+          : `API ne ${response.status} bheja.`;
+      } catch (error) {
+        box.textContent = "API tak connection nahi bana.";
+      }
+    });
+
+    const board = document.querySelector(".board");
+    function openScreen(screen) {
+      moduleName = screen;
+      document.querySelectorAll(".nav, .who, .head-who").forEach((item) => {
+        item.classList.toggle("active", item.dataset.screen === screen);
+      });
+      if (screen === "home") board.removeAttribute("data-screen");
+      else board.dataset.screen = screen;
+      if (screen === "api" || screen === "brain") document.getElementById("settings-form").closest("details").open = true;
+      if (screen === "desk" || screen === "stop") document.getElementById("text").focus();
+      renderInbox();
+    }
+    document.querySelectorAll("[data-screen]").forEach((button) => {
+      button.addEventListener("click", () => openScreen(button.dataset.screen));
+    });
+    document.getElementById("focus-talk").addEventListener("click", () => openScreen("desk"));
+    document.querySelectorAll("[data-jump]").forEach((button) => {
+      button.addEventListener("click", () => openScreen(button.dataset.jump));
+    });
+    async function setMode(mode) {
+      await postJson("/api/control", { reply_mode: mode, emergency_stop: emergencyOn });
+      await refresh();
+    }
+    document.getElementById("rule-approval").addEventListener("click", () => setMode("approval").catch((error) => showError(error.message)));
+    document.getElementById("rule-auto").addEventListener("click", () => setMode("auto").catch((error) => showError(error.message)));
+
+    function paintClock() {
+      const now = new Date();
+      document.getElementById("clock-date").textContent = now.toLocaleDateString(undefined, {
+        weekday: "long", day: "numeric", month: "short"
+      });
+      document.getElementById("clock-time").textContent = now.toLocaleTimeString(undefined, {
+        hour: "numeric", minute: "2-digit"
+      });
+    }
+    paintClock();
+    setInterval(paintClock, 30000);
+
+    const tokenKey = "jarvis_token";
+    let poll = null;
+    let creating = false;
+    function paintAccount(account) {
+      const name = (account.name || "Account").trim();
+      const email = account.email || "";
+      const mark = (name[0] || "J").toUpperCase();
+      document.getElementById("profile-avatar").textContent = mark;
+      document.getElementById("head-mark").textContent = mark;
+      document.getElementById("head-name").textContent = name;
+      document.getElementById("head-email").textContent = email;
+      document.getElementById("welcome-name").textContent = name;
+      document.getElementById("session-line").textContent = `${name} · ${email} · this browser`;
+      document.getElementById("profile-heading").textContent = name;
+      document.getElementById("profile-mail").textContent = email;
+      document.getElementById("profile-detail-name").textContent = name;
+      document.getElementById("profile-detail-email").textContent = email;
+    }
+    async function loadProfile() {
+      const token = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+      if (!token) return;
+      const response = await fetch("/api/account/me", { headers: { Authorization: "Bearer " + token } });
+      if (!response.ok) return;
+      paintAccount(await response.json());
+    }
+    function showDesk() {
+      document.getElementById("gate").hidden = true;
+      document.querySelector(".app").hidden = false;
+      loadProfile();
+      if (!poll) {
+        refresh();
+        poll = setInterval(refresh, 3000);
+      }
+    }
+    function showGate() {
+      document.getElementById("gate").hidden = false;
+      document.querySelector(".app").hidden = true;
+      if (poll) {
+        clearInterval(poll);
+        poll = null;
+      }
+    }
+    function keepToken(token, remember) {
+      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
+      (remember ? localStorage : sessionStorage).setItem(tokenKey, token);
+    }
+    document.getElementById("gate-switch").addEventListener("click", () => {
+      creating = !creating;
+      document.getElementById("gate-name").hidden = !creating;
+      document.getElementById("gate-title").innerHTML = creating ? "Create <span>account</span>" : "Admin <span>Login</span>";
+      document.getElementById("gate-submit").textContent = creating ? "Create account" : "Login";
+      document.getElementById("gate-switch").textContent = creating
+        ? "Already have an account? Login"
+        : "Naya account banao";
+      document.getElementById("gate-error").textContent = "";
+    });
+    document.getElementById("gate-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("gate-email").value.trim();
+      const password = document.getElementById("gate-password").value;
+      const name = document.getElementById("gate-name").value.trim();
+      const remember = document.getElementById("gate-remember").checked;
+      const error = document.getElementById("gate-error");
+      error.textContent = "";
+      try {
+        const response = await fetch(creating ? "/api/account/register" : "/api/account/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, name })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || "Sign in failed.");
+        keepToken(data.token, remember);
+        paintAccount(data);
+        showDesk();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+    });
+    document.getElementById("gate-forgot").addEventListener("click", () => {
+      document.getElementById("gate-error").textContent = "Email se password reset nahi hota. Account delete karke naya bana sakte ho.";
+    });
+    document.getElementById("gate-google").addEventListener("click", () => {
+      document.getElementById("gate-error").textContent = "Google login connected nahi hai.";
+    });
+    function signOut() {
+      localStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(tokenKey);
+      showGate();
+    }
+    document.getElementById("profile-sign-out").addEventListener("click", signOut);
+    const savedToken = localStorage.getItem(tokenKey) || sessionStorage.getItem(tokenKey);
+    if (!savedToken) showGate();
+    else {
+      fetch("/api/account/me", { headers: { Authorization: "Bearer " + savedToken } })
+        .then((response) => {
+          if (!response.ok) throw new Error("signed out");
+          showDesk();
+        })
+        .catch(() => {
+          localStorage.removeItem(tokenKey);
+          sessionStorage.removeItem(tokenKey);
+          showGate();
+        });
+    }
+  </script>
+</body>
+</html>
