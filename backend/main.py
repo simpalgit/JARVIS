@@ -7,13 +7,16 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 try:
     from openai import OpenAI
@@ -31,15 +34,29 @@ app.add_middleware(
 )
 
 BASE = Path(__file__).parent
-ADMIN_PAGE = BASE / "static" / "admin.html"
+LAYOUT_PATH = BASE / "static" / "layout.html"
+PAGES_DIR = BASE / "pages"
 LOGIN_ART = BASE / "static" / "login-art.jpg"
 STATE_PATH = BASE / "data" / "state.json"
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017")
+MONGODB_DB = os.getenv("MONGODB_DB", "jarvis")
 STARTED = datetime.now()
 LOG_LIMIT = 100
 INBOX_LIMIT = 100
 CHANNELS = {"gmail", "whatsapp", "notification"}
 ROLES = {"business", "operational", "blocked"}
 REPLY_MODES = {"approval", "auto", "both"}
+LEAD_STATUSES = ("new", "interested", "followup", "negotiation", "converted", "lost")
+_SENSITIVE = re.compile(
+    r"\b(otp|password|aadhaar|aadhar|cvv|pan card|account number|payment|discount|"
+    r"refund|invoice|legal|lawyer|court|contract|gst|upi|price|quote|kitna|cost|fees)\b",
+    re.IGNORECASE,
+)
+_ENQUIRY = re.compile(
+    r"\b(enquiry|inquiry|interested|website|service|product|quote|price|demo|"
+    r"meeting|project|business|client|app|software|pricing|invoice|quotation|proposal)\b",
+    re.IGNORECASE,
+)
 
 DEFAULT_SETTINGS = {
     "name": "JARVIS",
@@ -65,6 +82,11 @@ _next_inbox_id = 1
 _handled = 0
 _settings = dict(DEFAULT_SETTINGS)
 _account: dict | None = None
+_projects: list[dict] = []
+_tasks: list[dict] = []
+_meetings: list[dict] = []
+_documents: list[dict] = []
+_next_work_id = 1
 
 
 class Message(BaseModel):
@@ -104,29 +126,94 @@ class AllowIn(BaseModel):
     auto_reply: bool = False
 
 
+class LeadIn(BaseModel):
+    status: str
+
+
+class StopIn(BaseModel):
+    on: bool = True
+
+
+class ProjectIn(BaseModel):
+    client: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=120)
+    budget: str = Field(default="", max_length=40)
+    deadline: str = Field(default="", max_length=40)
+    note: str = Field(default="", max_length=500)
+
+
+class TaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    client: str = Field(default="", max_length=80)
+    due: str = Field(default="", max_length=40)
+
+
+class MeetingIn(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    client: str = Field(default="", max_length=80)
+    when: str = Field(min_length=1, max_length=40)
+
+
+class DocumentIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    kind: str = Field(default="note", max_length=20)
+    text: str = Field(min_length=1, max_length=8000)
+
+
 class AccountIn(BaseModel):
     email: str = Field(min_length=3, max_length=120)
     password: str = Field(min_length=5, max_length=80)
     name: str = Field(default="", max_length=80)
 
 
-def _load_state() -> None:
-    global _next_id, _next_contact_id, _next_inbox_id, _handled, _settings, _account
-    if not STATE_PATH.exists():
-        return
-    try:
-        saved = json.loads(STATE_PATH.read_text())
-    except (OSError, json.JSONDecodeError):
-        return
+def _mongo_host() -> str:
+    parsed = urlparse(MONGODB_URI)
+    if not parsed.hostname:
+        return "mongodb"
+    return f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+
+
+def _database_status() -> dict:
+    return {"ok": True, "engine": "mongodb", "name": MONGODB_DB, "host": _mongo_host()}
+
+
+def _snapshot() -> dict:
+    return {
+        "next_id": _next_id,
+        "next_contact_id": _next_contact_id,
+        "next_inbox_id": _next_inbox_id,
+        "handled": _handled,
+        "next_work_id": _next_work_id,
+        "settings": _settings,
+        "projects": list(_projects),
+        "tasks": list(_tasks),
+        "meetings": list(_meetings),
+        "documents": list(_documents),
+        "messages": list(_log),
+        "contacts": list(_contacts),
+        "inbox": list(_inbox),
+        "audit": list(_audit),
+        "account": _account,
+    }
+
+
+def _apply_saved(saved: dict) -> None:
+    global _next_id, _next_contact_id, _next_inbox_id, _handled, _settings, _account, _next_work_id
     _settings = {**DEFAULT_SETTINGS, **saved.get("settings", {})}
     _next_id = int(saved.get("next_id", 1))
     _next_contact_id = int(saved.get("next_contact_id", 1))
     _next_inbox_id = int(saved.get("next_inbox_id", 1))
     _handled = int(saved.get("handled", 0))
+    _next_work_id = int(saved.get("next_work_id", 1))
     _contacts[:] = list(saved.get("contacts", []))
-    _inbox.clear()
+    _projects[:] = list(saved.get("projects", []))
+    _tasks[:] = list(saved.get("tasks", []))
+    _meetings[:] = list(saved.get("meetings", []))
+    _documents[:] = list(saved.get("documents", []))
+    _log.clear()
     for entry in reversed(saved.get("messages", [])[:LOG_LIMIT]):
         _log.appendleft(entry)
+    _inbox.clear()
     for entry in reversed(saved.get("inbox", [])[:INBOX_LIMIT]):
         _inbox.appendleft(entry)
     _audit.clear()
@@ -136,21 +223,39 @@ def _load_state() -> None:
     _account = dict(saved_account) if isinstance(saved_account, dict) else None
 
 
+def _connect_mongo():
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=3000)
+    try:
+        client.admin.command("ping")
+    except PyMongoError as exc:
+        raise SystemExit(
+            f"MongoDB is not reachable at {_mongo_host()}. Start MongoDB, or set MONGODB_URI."
+        ) from exc
+    return client[MONGODB_DB]["state"]
+
+
+_state_col = _connect_mongo()
+
+
+def _load_state() -> None:
+    saved = _state_col.find_one({"_id": "app"})
+    if saved is None and STATE_PATH.exists():
+        try:
+            saved = json.loads(STATE_PATH.read_text())
+        except (OSError, json.JSONDecodeError):
+            saved = None
+        if saved:
+            _apply_saved(saved)
+            _save_state()
+            return
+    if saved:
+        _apply_saved(saved)
+
+
 def _save_state() -> None:
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "next_id": _next_id,
-        "next_contact_id": _next_contact_id,
-        "next_inbox_id": _next_inbox_id,
-        "handled": _handled,
-        "settings": _settings,
-        "messages": list(_log),
-        "contacts": list(_contacts),
-        "inbox": list(_inbox),
-        "audit": list(_audit),
-        "account": _account,
-    }
-    STATE_PATH.write_text(json.dumps(payload, indent=2))
+    payload = _snapshot()
+    payload["_id"] = "app"
+    _state_col.replace_one({"_id": "app"}, payload, upsert=True)
 
 
 def _clean_channel(channel: str) -> str:
@@ -234,7 +339,7 @@ def _complete(text: str, *, with_history: bool) -> str:
 
 def _local_draft(sender: str, body: str) -> str:
     first = sender.strip().split()[0] if sender.strip() else "there"
-    unsure = re.search(r"\b(price|cost|quote|kitna|kab|when|otp|password|account)\b", body.lower())
+    unsure = _SENSITIVE.search(body) or re.search(r"\b(kab|when|date|time)\b", body.lower())
     if re.search(r"[\u0900-\u097F]", body):
         if unsure:
             return f"Namaste {first}, message mil gaya. Exact detail confirm karke hi jawab dunga. Main andaza nahi lagaunga."
@@ -323,11 +428,28 @@ def _duplicate(channel: str, handle: str, body: str) -> dict | None:
     return None
 
 
+def _is_enquiry(body: str) -> bool:
+    return bool(_ENQUIRY.search(body or ""))
+
+
+def _summary_text(body: str) -> str:
+    line = " ".join((body or "").split())
+    return line if len(line) <= 160 else line[:157] + "..."
+
+
+def _followup_draft(sender: str) -> str:
+    first = sender.strip().split()[0] if sender.strip() else "there"
+    return (
+        f"Hello {first}, I am following up on your message. "
+        "I will confirm the details before sharing a price, date, or commitment."
+    )
+
+
 def _priority(body: str, contact: dict | None) -> str:
     text = body.lower()
     if any(word in text for word in ("lottery", "you won", "crypto giveaway", "claim your prize")):
         return "spam"
-    if any(word in text for word in ("otp", "password", "aadhaar", "aadhar", "cvv", "account number", "pan card")):
+    if _SENSITIVE.search(text):
         return "sensitive"
     if any(word in text for word in ("urgent", "asap", "jaldi", "turant")):
         return "urgent"
@@ -360,15 +482,32 @@ def _channel_spoken(channel: str) -> str:
 def _speak_for(item: dict, contact: dict | None) -> str:
     channel = _channel_spoken(item.get("channel", ""))
     sender = item.get("sender") or "Koi"
+    if contact is None and channel == "WhatsApp":
+        return (
+            f"Sir, naya WhatsApp message. {sender}. "
+            "Sir, you have received a new WhatsApp message. "
+            "Sir, a new business client has contacted you."
+        )
+    if contact is None and channel == "Gmail":
+        return (
+            f"Sir, naya Gmail enquiry. {sender}. "
+            "Sir, you have received a new Gmail enquiry."
+        )
     if contact is None:
-        return f"Naya {channel}. {sender} list mein nahi hai."
+        return f"Sir, naya alert. {sender}. Approval required."
     if item.get("status") == "skipped":
-        return f"{sender} operational hai. Reply nahi diya."
+        return f"{sender} operational hai. Reply nahi diya. No reply was sent."
     if _phone_can_send(item, contact):
-        return f"{sender} ko {channel} reply bhej raha hoon."
+        return (
+            f"Sir, {sender} ko {channel} reply bhej raha hoon. "
+            f"Sir, I am replying to {sender} on {channel}."
+        )
     if item.get("status") == "pending":
-        return f"{channel} message. {sender}. Aapki approval baaki hai."
-    return f"{channel} message. {sender}."
+        return (
+            f"Sir, {sender} ke {channel} message ka reply taiyar hai. "
+            "Sir, I have prepared a reply. Please approve it."
+        )
+    return f"Sir, {channel} message. {sender}."
 
 
 def _phone_can_send(item: dict, contact: dict | None) -> bool:
@@ -385,14 +524,7 @@ def _phone_can_send(item: dict, contact: dict | None) -> bool:
 def _queue_allowed(contact: dict) -> bool:
     if _settings.get("emergency_stop"):
         return False
-    if _in_reply_window(contact):
-        return True
-    mode = _settings.get("reply_mode", "approval")
-    if mode == "auto":
-        return True
-    if mode == "both":
-        return bool(contact.get("auto_reply") or contact.get("vip"))
-    return False
+    return _in_reply_window(contact)
 
 
 def _decide(item: dict, contact: dict | None, draft: str, source: str) -> None:
@@ -406,12 +538,18 @@ def _decide(item: dict, contact: dict | None, draft: str, source: str) -> None:
         )
         return
     if contact is None:
+        enquiry = _is_enquiry(item.get("body") or "")
         item.update(
             decision="hold",
             status="held",
             draft="",
             draft_source="local",
-            reason="Naya contact. List mein nahi, isliye reply nahi diya.",
+            reason=(
+                "New business enquiry. Potential lead. Approval required."
+                if enquiry
+                else "Naya contact. List mein nahi, isliye reply nahi diya."
+            ),
+            lead_status="new" if enquiry else "",
         )
         return
     if contact["role"] in {"operational", "blocked"}:
@@ -433,14 +571,28 @@ def _decide(item: dict, contact: dict | None, draft: str, source: str) -> None:
         )
         return
     if item.get("priority") == "sensitive":
+        if not item.get("lead_status") and _is_enquiry(item.get("body") or ""):
+            item["lead_status"] = "negotiation"
         item.update(
             decision="reply",
             status="pending",
             draft=draft,
             draft_source=source,
-            reason="Sensitive message. Extra approval required. No guess was sent.",
+            reason="Payment, price, discount, or legal detail. Approval required. No promise was sent.",
         )
         return
+    lang = _language_name(item.get("body") or "")
+    if lang not in {"hindi", "english"}:
+        item.update(
+            decision="reply",
+            status="pending",
+            draft=draft,
+            draft_source=source,
+            reason=f"{lang.capitalize()} message. Translation is not guessed. Approval required.",
+        )
+        return
+    if not item.get("lead_status") and _is_enquiry(item.get("body") or ""):
+        item["lead_status"] = "interested"
     queued = _queue_allowed(contact)
     item.update(
         decision="reply",
@@ -469,14 +621,40 @@ def _other_reply(sender: str, body: str) -> str:
     return f"Jawab ka Hindi matlab: Namaste {first}, message mil gaya. Detail confirm karke hi jawab dunga."
 
 
+def _language_name(body: str) -> str:
+    scripts = (
+        (r"[\u0900-\u097F]", "hindi"),
+        (r"[\u0980-\u09FF]", "bengali"),
+        (r"[\u0A00-\u0A7F]", "punjabi"),
+        (r"[\u0A80-\u0AFF]", "gujarati"),
+        (r"[\u0B80-\u0BFF]", "tamil"),
+        (r"[\u0C00-\u0C7F]", "telugu"),
+        (r"[\u0C80-\u0CFF]", "kannada"),
+        (r"[\u0D00-\u0D7F]", "malayalam"),
+        (r"[\u0600-\u06FF]", "arabic"),
+        (r"[\u4E00-\u9FFF]", "chinese"),
+        (r"[\u3040-\u30FF]", "japanese"),
+        (r"[\u0400-\u04FF]", "cyrillic"),
+    )
+    for pattern, name in scripts:
+        if re.search(pattern, body or ""):
+            return name
+    return "english"
+
+
 def _with_explain(item: dict) -> dict:
     copy = dict(item)
     body = copy.get("body") or ""
-    hindi = bool(re.search(r"[\u0900-\u097F]", body))
-    copy["lang"] = "hindi" if hindi else "english"
-    if copy.get("draft"):
+    lang = _language_name(body)
+    copy["lang"] = lang
+    copy["summary"] = _summary_text(body)
+    if not copy.get("lead_status") and copy.get("status") == "held" and _is_enquiry(body):
+        copy["lead_status"] = "new"
+    if lang not in {"hindi", "english"}:
+        copy["explain"] = f"{lang.capitalize()} message. Translation is not guessed."
+    elif copy.get("draft"):
         copy["explain"] = _other_reply(copy.get("sender") or "", body)
-    elif hindi:
+    elif lang == "hindi":
         copy["explain"] = "Hindi message. English meaning is not guessed."
     else:
         copy["explain"] = "English message. Hindi meaning appears when a draft exists."
@@ -497,7 +675,14 @@ def _overview() -> dict:
             "contacts": list(_contacts),
             "inbox": [_with_explain(item) for item in _inbox],
             "audit": list(_audit),
+            "projects": list(_projects),
+            "tasks": list(_tasks),
+            "meetings": list(_meetings),
+            "documents": list(_documents),
+            "followups": _followups(),
+            "report": _daily_report(),
             "synced_at": datetime.now().isoformat(),
+            "database": _database_status(),
         }
 
 
@@ -567,9 +752,145 @@ def _apply_order(text: str) -> str | None:
     named = _named_reply(asked)
     if named:
         return named
+    if any(phrase in asked for phrase in ("aaj ki report", "daily report", "business report", "aaj ka report")):
+        return _report_text()
+    if any(phrase in asked for phrase in ("tasks dikhao", "task list", "mere tasks")):
+        return _task_text()
+    if any(phrase in asked for phrase in ("meetings dikhao", "meeting list", "aaj ki meeting")):
+        return _meeting_text()
+    if any(phrase in asked for phrase in ("follow up", "followup", "purane clients")):
+        return _followup_text()
     if any(phrase in asked for phrase in ("summary", "naye business", "business emails", "business messages", "daily briefing", "briefing")):
         return _briefing()
     return None
+
+
+def _read_document(text: str) -> dict:
+    amounts = re.findall(
+        r"(?:₹|rs\.?|inr|\$|€)\s?\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*\s?(?:rupees|rs)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    dates = re.findall(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", text)
+    return {
+        "summary": _summary_text(text),
+        "amounts": amounts[:8],
+        "dates": dates[:8],
+        "note": "Sirf woh amount aur date jo text mein likhe hain. Jo likha nahi, woh guess nahi kiya.",
+    }
+
+
+def _stamp_work(item: dict) -> dict:
+    global _next_work_id
+    item["id"] = _next_work_id
+    item["time"] = datetime.now().isoformat(timespec="seconds")
+    _next_work_id += 1
+    return item
+
+
+def _followups() -> list[dict]:
+    now = datetime.now()
+    rows = []
+    for contact in _contacts:
+        if contact.get("role") != "business":
+            continue
+        handle = (contact.get("handle") or "").lower()
+        channel = contact.get("channel")
+        latest = next(
+            (
+                item for item in _inbox
+                if item.get("channel") == channel and (item.get("handle") or "").lower() == handle
+            ),
+            None,
+        )
+        if latest is None:
+            continue
+        try:
+            when = datetime.fromisoformat(latest.get("time") or "")
+        except ValueError:
+            continue
+        days = (now - when).days
+        if days < 2:
+            continue
+        rows.append(
+            {
+                "client": contact.get("name") or "",
+                "channel": channel,
+                "days": days,
+                "draft": _followup_draft(contact.get("name") or ""),
+            }
+        )
+    return rows[:12]
+
+
+def _daily_report() -> dict:
+    today = datetime.now().date().isoformat()
+    new_clients = [item for item in _inbox if item.get("status") == "held" and str(item.get("time") or "").startswith(today)]
+    pending = [item for item in _inbox if item.get("status") == "pending"]
+    completed = [item for item in _inbox if item.get("status") == "replied" and str(item.get("time") or "").startswith(today)]
+    open_tasks = [task for task in _tasks if not task.get("done")]
+    soon = []
+    now = datetime.now()
+    for meeting in _meetings:
+        try:
+            when = datetime.fromisoformat(meeting.get("when") or "")
+        except ValueError:
+            continue
+        if now <= when <= now + timedelta(days=7):
+            soon.append(meeting)
+    lines = [
+        f"Naye clients aaj: {len(new_clients)}.",
+        f"Pending replies: {len(pending)}.",
+        f"Aaj complete hue replies: {len(completed)}.",
+        f"Open tasks: {len(open_tasks)}.",
+        f"Aane wali meetings, 7 din: {len(soon)}.",
+        f"Projects: {len(_projects)}. Documents: {len(_documents)}.",
+    ]
+    return {
+        "new_clients": len(new_clients),
+        "pending_replies": len(pending),
+        "completed": len(completed),
+        "open_tasks": len(open_tasks),
+        "meetings_soon": len(soon),
+        "projects": len(_projects),
+        "documents": len(_documents),
+        "lines": lines,
+    }
+
+
+def _report_text() -> str:
+    with _lock:
+        lines = _daily_report()["lines"]
+    return "Daily business report:\n" + "\n".join(lines)
+
+
+def _task_text() -> str:
+    with _lock:
+        open_tasks = [task for task in _tasks if not task.get("done")]
+    if not open_tasks:
+        return "Koi open task nahi. Task tab banta hai jab aap use likhte ho."
+    return "Open tasks:\n" + "\n".join(
+        f"- {task.get('title')} ({task.get('client') or 'no client'})" for task in open_tasks[:8]
+    )
+
+
+def _meeting_text() -> str:
+    with _lock:
+        rows = list(_meetings)
+    if not rows:
+        return "Koi meeting save nahi hai."
+    return "Meetings:\n" + "\n".join(
+        f"- {item.get('title')} · {item.get('when')}" for item in rows[:8]
+    )
+
+
+def _followup_text() -> str:
+    with _lock:
+        rows = _followups()
+    if not rows:
+        return "Koi purana client follow-up nahi. Do din se chup contact par suggestion aayega. Abhi kuch bheja nahi gaya."
+    lines = [f"- {item['client']}: {item['days']} din. {item['draft']}" for item in rows[:6]]
+    return "Follow-up suggestions. Abhi kuch send nahi hua:\n" + "\n".join(lines)
 
 
 def _briefing() -> str:
@@ -657,9 +978,47 @@ def update_control(body: ControlIn):
         }
 
 
+ADMIN_PAGES = {
+    "inbox",
+    "approval",
+    "channels",
+    "rules",
+    "brain",
+    "security",
+    "devices",
+    "health",
+    "people",
+    "leads",
+    "work",
+    "desk",
+    "profile",
+    "reports",
+    "stop",
+    "gmail",
+    "whatsapp",
+    "alerts",
+}
+
+
+def _admin_html(page: str) -> HTMLResponse:
+    layout = LAYOUT_PATH.read_text()
+    fragment = (PAGES_DIR / page / "page.html").read_text()
+    return HTMLResponse(layout.replace("<!--PAGE-->", fragment))
+
+
 @app.get("/admin")
 def admin_panel():
-    return FileResponse(ADMIN_PAGE)
+    return _admin_html("home")
+
+
+@app.get("/admin/{page}")
+def admin_section(page: str):
+    if page not in ADMIN_PAGES:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return _admin_html(page)
+
+
+app.mount("/assets", StaticFiles(directory=BASE / "static"), name="assets")
 
 
 @app.get("/login-art.jpg")
@@ -904,6 +1263,152 @@ def allow_sender(item_id: int, body: AllowIn):
         return dict(item)
 
 
+@app.get("/api/leads")
+def list_leads():
+    with _lock:
+        shown = [_with_explain(item) for item in _inbox]
+    return {"leads": [item for item in shown if item.get("lead_status")]}
+
+
+@app.post("/api/inbox/{item_id}/lead")
+def set_lead(item_id: int, body: LeadIn):
+    status = body.status.strip().lower()
+    if status not in LEAD_STATUSES:
+        raise HTTPException(status_code=400, detail="Lead status is not one of the six pipeline stages.")
+    with _lock:
+        item = _inbox_item(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Message not found.")
+        item["lead_status"] = status
+        if status == "followup":
+            item["followup"] = _followup_draft(item.get("sender") or "")
+        _save_state()
+        return _with_explain(item)
+
+
+@app.post("/api/emergency-stop")
+def emergency_stop(body: StopIn):
+    _set_control(emergency_stop=body.on)
+    return {"emergency_stop": body.on}
+
+
+@app.post("/api/projects")
+def add_project(body: ProjectIn):
+    with _lock:
+        project = _stamp_work(
+            {
+                "client": body.client.strip(),
+                "name": body.name.strip(),
+                "budget": body.budget.strip(),
+                "deadline": body.deadline.strip(),
+                "note": body.note.strip(),
+            }
+        )
+        _projects.append(project)
+        _save_state()
+        return dict(project)
+
+
+@app.delete("/api/projects/{item_id}")
+def delete_project(item_id: int):
+    return _delete_work(_projects, item_id)
+
+
+@app.post("/api/tasks")
+def add_task(body: TaskIn):
+    with _lock:
+        task = _stamp_work(
+            {
+                "title": body.title.strip(),
+                "client": body.client.strip(),
+                "due": body.due.strip(),
+                "done": False,
+            }
+        )
+        _tasks.append(task)
+        _save_state()
+        return dict(task)
+
+
+@app.post("/api/tasks/{item_id}/done")
+def finish_task(item_id: int):
+    with _lock:
+        for task in _tasks:
+            if task["id"] == item_id:
+                task["done"] = True
+                _save_state()
+                return dict(task)
+    raise HTTPException(status_code=404, detail="Task not found.")
+
+
+@app.delete("/api/tasks/{item_id}")
+def delete_task(item_id: int):
+    return _delete_work(_tasks, item_id)
+
+
+@app.post("/api/meetings")
+def add_meeting(body: MeetingIn):
+    when = body.when.strip()
+    try:
+        datetime.fromisoformat(when)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Meeting time must be a real date and time.")
+    with _lock:
+        meeting = _stamp_work(
+            {
+                "title": body.title.strip(),
+                "client": body.client.strip(),
+                "when": when,
+            }
+        )
+        _meetings.append(meeting)
+        _save_state()
+        return dict(meeting)
+
+
+@app.delete("/api/meetings/{item_id}")
+def delete_meeting(item_id: int):
+    return _delete_work(_meetings, item_id)
+
+
+@app.post("/api/documents")
+def add_document(body: DocumentIn):
+    kind = body.kind.strip().lower()
+    if kind not in {"note", "invoice", "project", "pdf"}:
+        kind = "note"
+    found = _read_document(body.text.strip())
+    with _lock:
+        document = _stamp_work(
+            {
+                "title": body.title.strip(),
+                "kind": kind,
+                "text": body.text.strip(),
+                "summary": found["summary"],
+                "amounts": found["amounts"],
+                "dates": found["dates"],
+                "note": found["note"],
+            }
+        )
+        _documents.append(document)
+        _save_state()
+        return dict(document)
+
+
+@app.delete("/api/documents/{item_id}")
+def delete_document(item_id: int):
+    return _delete_work(_documents, item_id)
+
+
+def _delete_work(bucket: list[dict], item_id: int) -> dict:
+    with _lock:
+        kept = [item for item in bucket if item.get("id") != item_id]
+        if len(kept) == len(bucket):
+            raise HTTPException(status_code=404, detail="Item not found.")
+        bucket[:] = kept
+        _save_state()
+    return {"deleted": True}
+
+
 def _page(title: str, body: str) -> HTMLResponse:
     html = f"""<!doctype html>
 <html lang="en">
@@ -931,11 +1436,16 @@ def _page(title: str, body: str) -> HTMLResponse:
 
 
 def _wipe_account() -> None:
-    global _next_id, _next_contact_id, _next_inbox_id, _handled, _settings, _account
+    global _next_id, _next_contact_id, _next_inbox_id, _handled, _settings, _account, _next_work_id
     _log.clear()
     _contacts.clear()
     _inbox.clear()
     _audit.clear()
+    _projects.clear()
+    _tasks.clear()
+    _meetings.clear()
+    _documents.clear()
+    _next_work_id = 1
     _next_id = 1
     _next_contact_id = 1
     _next_inbox_id = 1
